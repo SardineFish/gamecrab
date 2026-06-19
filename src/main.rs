@@ -1,13 +1,12 @@
 #![windows_subsystem = "console"]
 
-use std::{env, fs::{create_dir_all, File}, io, path::Path, time::Duration};
+use std::{env, fs::{create_dir_all, File}, io, path::Path, time::{Duration, Instant}};
 
 use crossterm::{ExecutableCommand, cursor::MoveTo};
 use memmap2::{Mmap, MmapMut};
 use sdl2::{pixels::PixelFormatEnum, event::Event, rect::Rect, keyboard::Keycode};
-use stopwatch::Stopwatch;
 
-use crate::core::{emu::{Emu, RegHw}, cpu::{Reg16, Reg, Inst}};
+use crate::core::{emu::{Emu, RegHw}, cpu::{Reg16, Reg}};
 
 mod core;
 
@@ -65,7 +64,7 @@ fn main() {
     None => None,
   };
   let mut emu = Emu::new(rom, sram);
-  let uptime = Stopwatch::start_new();
+  let uptime = Instant::now();
   let mut last_frame_time = Duration::default();
   let mut freq = FREQ;
   let mut print_debug = PRINT_DEBUG;
