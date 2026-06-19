@@ -2,13 +2,39 @@ mod gamepad;
 pub mod oam;
 mod timer;
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
 use self::{
     gamepad::{Gamepad, GamepadRegion},
     oam::Oam,
     timer::Timer,
 };
+
+pub enum Rom {
+    Owned(Vec<u8>),
+    Static(&'static [u8]),
+}
+
+impl Rom {
+    pub fn as_slice(&self) -> &[u8] {
+        match self {
+            Self::Owned(rom) => rom,
+            Self::Static(rom) => rom,
+        }
+    }
+}
+
+impl From<Vec<u8>> for Rom {
+    fn from(rom: Vec<u8>) -> Self {
+        Self::Owned(rom)
+    }
+}
+
+impl From<&'static [u8]> for Rom {
+    fn from(rom: &'static [u8]) -> Self {
+        Self::Static(rom)
+    }
+}
 
 enum CartType {
     ROM,
@@ -18,10 +44,10 @@ enum CartType {
 }
 
 pub struct Bus {
-    pub rom: Vec<u8>,
-    pub vram: [u8; 0x2000],
+    pub rom: Rom,
+    pub vram: Vec<u8>,
     pub sram: Option<Vec<u8>>,
-    pub wram: [u8; 0x2000],
+    pub wram: Vec<u8>,
     pub oam: Oam,
     pub io: [u8; 0x80],
     pub hram: [u8; 0x7F],
@@ -40,7 +66,15 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(rom: Vec<u8>, sram: Option<Vec<u8>>) -> Self {
-        let cart_type = match rom[0x147] {
+        Self::from_rom(rom.into(), sram)
+    }
+
+    pub fn new_static_rom(rom: &'static [u8], sram: Option<Vec<u8>>) -> Self {
+        Self::from_rom(rom.into(), sram)
+    }
+
+    fn from_rom(rom: Rom, sram: Option<Vec<u8>>) -> Self {
+        let cart_type = match rom.as_slice()[0x147] {
             0x00 => CartType::ROM,
             0x01 => CartType::MBC1,
             0x02 => CartType::MBC1,
@@ -60,9 +94,9 @@ impl Bus {
         };
         Self {
             rom,
-            vram: [0; 0x2000],
+            vram: vec![0; 0x2000],
             sram,
-            wram: [0; 0x2000],
+            wram: vec![0; 0x2000],
             oam: Oam::new(),
             io: [0; 0x80],
             hram: [0; 0x7F],
@@ -81,8 +115,8 @@ impl Bus {
     pub fn get(&self, addr: u16) -> u8 {
         let idx = addr as usize;
         match addr {
-            0x0000..=0x3FFF => self.rom[idx - 0x0000],
-            0x4000..=0x7FFF => self.rom[idx - 0x4000 + self.rom_bank as usize * 0x4000],
+            0x0000..=0x3FFF => self.rom.as_slice()[idx - 0x0000],
+            0x4000..=0x7FFF => self.rom.as_slice()[idx - 0x4000 + self.rom_bank as usize * 0x4000],
             0x8000..=0x9FFF => self.vram[idx - 0x8000],
             0xA000..=0xBFFF => match &self.sram {
                 Some(sram) => sram[0x2000 * self.sram_bank as usize + idx - 0xA000],
@@ -225,7 +259,7 @@ fn mask(addr: u16, value: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{sram_size_from_rom, Bus};
-    use alloc::vec;
+    use alloc::{vec, vec::Vec};
 
     fn mbc1_rom() -> Vec<u8> {
         let mut rom = vec![0; 0x4000 * 3];
@@ -247,6 +281,20 @@ mod tests {
         bus.set(0x2000, 0x02);
 
         assert_eq!(bus.get(0x4000), 0xCC);
+    }
+
+    #[test]
+    fn reads_rom_from_static_slice() {
+        static ROM: [u8; 0x4000] = {
+            let mut rom = [0; 0x4000];
+            rom[0x147] = 0x00;
+            rom[0x0150] = 0xAA;
+            rom
+        };
+
+        let bus = Bus::new_static_rom(&ROM, None);
+
+        assert_eq!(bus.get(0x0150), 0xAA);
     }
 
     #[test]

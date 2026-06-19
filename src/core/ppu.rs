@@ -1,4 +1,4 @@
-use alloc::rc::Rc;
+use alloc::{rc::Rc, vec, vec::Vec};
 use core::cell::RefCell;
 
 use super::{
@@ -21,7 +21,7 @@ enum Palette {
 pub struct Ppu {
     bus: Rc<RefCell<Bus>>,
     clock: Rc<RefCell<Clock>>,
-    pub framebuffer: [u8; SCRN_X as usize * SCRN_Y as usize],
+    pub framebuffer: Vec<u8>,
     pub current_line: u8,
     pub frame_count: u64,
     next_line_t_state: u64,
@@ -34,7 +34,7 @@ impl Ppu {
         Self {
             bus,
             clock,
-            framebuffer: [0; SCRN_X as usize * SCRN_Y as usize],
+            framebuffer: vec![0; SCRN_X as usize * SCRN_Y as usize],
             current_line: 0,
             frame_count: 0,
             next_line_t_state: 0,

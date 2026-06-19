@@ -207,14 +207,14 @@ impl Cpu {
     }
     fn pop(&mut self) -> u16 {
         let sp = self.get_reg_16(SP);
-        self.set_reg_16(SP, sp + 2);
-        self.bus.borrow().get(sp) as u16 | (self.bus.borrow().get(sp + 1) as u16) << 8
+        self.set_reg_16(SP, sp.wrapping_add(2));
+        self.bus.borrow().get(sp) as u16 | (self.bus.borrow().get(sp.wrapping_add(1)) as u16) << 8
     }
 
     fn add(&mut self, reg: Reg) {
         let lhs = self.get_reg(A);
         let rhs = self.get_reg(reg);
-        let result = lhs + rhs;
+        let result = lhs.wrapping_add(rhs);
         self.set_reg(A, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, false);
@@ -225,7 +225,7 @@ impl Cpu {
         let lhs = self.get_reg(A);
         let rhs = self.get_reg(reg);
         let carry = self.get_flag(CF) as u8;
-        let result = lhs + rhs + carry;
+        let result = lhs.wrapping_add(rhs).wrapping_add(carry);
         self.set_reg(A, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, false);
@@ -235,7 +235,7 @@ impl Cpu {
     fn sub(&mut self, reg: Reg) {
         let lhs = self.get_reg(A);
         let rhs = self.get_reg(reg);
-        let result = lhs - rhs;
+        let result = lhs.wrapping_sub(rhs);
         self.set_reg(A, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, true);
@@ -246,7 +246,7 @@ impl Cpu {
         let lhs = self.get_reg(A);
         let rhs = self.get_reg(reg);
         let carry = self.get_flag(CF) as u8;
-        let result = lhs - rhs - carry;
+        let result = lhs.wrapping_sub(rhs).wrapping_sub(carry);
         self.set_reg(A, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, true);
@@ -280,7 +280,7 @@ impl Cpu {
     fn cp(&mut self, reg: Reg) {
         let lhs = self.get_reg(A);
         let rhs = self.get_reg(reg);
-        let result = lhs - rhs;
+        let result = lhs.wrapping_sub(rhs);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, true);
         self.set_flag(HF, lhs & 0b_1111 < rhs & 0b_1111);
@@ -288,14 +288,14 @@ impl Cpu {
     }
 
     fn inc(&mut self, reg: Reg) {
-        let result = self.get_reg(reg) + 1;
+        let result = self.get_reg(reg).wrapping_add(1);
         self.set_reg(reg, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, false);
         self.set_flag(HF, result & 0b_1111 == 0b_0000);
     }
     fn dec(&mut self, reg: Reg) {
-        let result = self.get_reg(reg) - 1;
+        let result = self.get_reg(reg).wrapping_sub(1);
         self.set_reg(reg, result);
         self.set_flag(ZF, result == 0);
         self.set_flag(NF, true);
@@ -389,23 +389,22 @@ impl Cpu {
     fn add_16(&mut self, reg: Reg16) {
         let lhs = self.get_reg_16(HL);
         let rhs = self.get_reg_16(reg);
-        let result = lhs + rhs;
+        let result = lhs.wrapping_add(rhs);
         self.set_reg_16(HL, result);
         self.set_flag(NF, false);
         self.set_flag(HF, (lhs & 0xFFF) + (rhs & 0xFFF) > 0xFFF);
         self.set_flag(CF, lhs as u32 + rhs as u32 > 0xFFFF);
     }
     fn inc_16(&mut self, reg: Reg16) {
-        self.set_reg_16(reg, self.get_reg_16(reg) + 0x0001);
+        self.set_reg_16(reg, self.get_reg_16(reg).wrapping_add(0x0001));
     }
     fn dec_16(&mut self, reg: Reg16) {
-        self.set_reg_16(reg, self.get_reg_16(reg) + 0xFFFF);
+        self.set_reg_16(reg, self.get_reg_16(reg).wrapping_sub(0x0001));
     }
 
     fn jr(&mut self, offset: u8) {
         let lhs = self.get_reg_16(PC);
-        let rhs = offset as i8 as u16;
-        self.set_reg_16(PC, lhs + rhs);
+        self.set_reg_16(PC, lhs.wrapping_add_signed(offset as i8 as i16));
     }
     fn jp(&mut self, addr: u16) {
         self.set_reg_16(PC, addr);
@@ -414,7 +413,7 @@ impl Cpu {
     fn next_byte(&mut self) -> u8 {
         let pc = self.get_reg_16(PC);
         let byte = self.bus.borrow().get(pc);
-        self.set_reg_16(PC, pc + 1);
+        self.set_reg_16(PC, pc.wrapping_add(1));
         byte
     }
     fn next_inst(&mut self) -> Inst {
@@ -542,13 +541,13 @@ impl Cpu {
                 let mut result = self.get_reg(A) as u16;
                 if self.get_flag(NF) {
                     if self.get_flag(HF) {
-                        result -= 6;
+                        result = result.wrapping_sub(6);
                         if !self.get_flag(CF) {
                             result &= 0xFF;
                         }
                     }
                     if self.get_flag(CF) {
-                        result -= 0x60;
+                        result = result.wrapping_sub(0x60);
                     }
                 } else {
                     if self.get_flag(HF) || result & 0xF > 9 {

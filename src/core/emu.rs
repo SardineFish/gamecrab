@@ -1,4 +1,4 @@
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{boxed::Box, rc::Rc, vec::Vec};
 use core::cell::RefCell;
 
 use super::{
@@ -26,18 +26,27 @@ pub struct Emu {
     pub bus: Rc<RefCell<Bus>>,
     pub clock: Rc<RefCell<Clock>>,
     pub cpu: Cpu,
-    pub ppu: Ppu,
+    pub ppu: Box<Ppu>,
 }
 
 impl Emu {
     pub fn new(rom: Vec<u8>, sram: Option<Vec<u8>>) -> Self {
         let bus = Rc::new(RefCell::new(Bus::new(rom, sram)));
+        Self::from_bus(bus)
+    }
+
+    pub fn new_static_rom(rom: &'static [u8], sram: Option<Vec<u8>>) -> Self {
+        let bus = Rc::new(RefCell::new(Bus::new_static_rom(rom, sram)));
+        Self::from_bus(bus)
+    }
+
+    fn from_bus(bus: Rc<RefCell<Bus>>) -> Self {
         let clock = Rc::new(RefCell::new(Clock::new()));
         Self {
             bus: bus.clone(),
             clock: clock.clone(),
             cpu: Cpu::new(bus.clone(), clock.clone()),
-            ppu: Ppu::new(bus.clone(), clock.clone()),
+            ppu: Box::new(Ppu::new(bus.clone(), clock.clone())),
         }
     }
 

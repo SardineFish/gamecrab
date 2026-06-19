@@ -39,9 +39,9 @@ impl Timer {
      * Called every T-state.
      */
     pub fn tick(&mut self) {
-        self.subdiv += 1;
+        self.subdiv = self.subdiv.wrapping_add(1);
         if self.subdiv == 0 {
-            self.div += 1;
+            self.div = self.div.wrapping_add(1);
         }
         if self.tac & 0b_100 > 0 {
             let increased = match self.tac & 0b_11 {
@@ -52,7 +52,7 @@ impl Timer {
                 _ => unreachable!(),
             };
             if increased {
-                self.tima += 1;
+                self.tima = self.tima.wrapping_add(1);
                 if self.tima == 0 {
                     self.tima = self.tma;
                     self.overflow = true;
