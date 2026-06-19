@@ -6,9 +6,7 @@ use crossterm::{ExecutableCommand, cursor::MoveTo};
 use memmap2::{Mmap, MmapMut};
 use sdl2::{pixels::PixelFormatEnum, event::Event, rect::Rect, keyboard::Keycode};
 
-use crate::core::{emu::{Emu, RegHw}, cpu::{Reg16, Reg}};
-
-mod core;
+use gamecrab::core::{emu::{Emu, RegHw}, cpu::{Reg16, Reg}};
 
 const FREQ: f64 = 4194304.0 / 1.0;
 const FAST_FORWARD_FREQ: f64 = FREQ * 2.0;

@@ -14,6 +14,7 @@ pub struct Ppu {
   clock: Rc<RefCell<Clock>>,
   pub framebuffer: [u8; SCRN_X as usize * SCRN_Y as usize],
   pub current_line: u8,
+  pub frame_count: u64,
   next_line_t_state: u64,
   pub irq_vblank: bool,
   pub irq_lcd: bool,
@@ -26,6 +27,7 @@ impl Ppu {
       clock,
       framebuffer: [0; SCRN_X as usize * SCRN_Y as usize],
       current_line: 0,
+      frame_count: 0,
       next_line_t_state: 0,
       irq_vblank: false,
       irq_lcd: false,
@@ -63,7 +65,10 @@ impl Ppu {
       self.irq_vblank = true;
     }
     self.current_line += 1;
-    if self.current_line >= LINES_PER_FRAME { self.current_line = 0; }
+    if self.current_line >= LINES_PER_FRAME {
+      self.current_line = 0;
+      self.frame_count += 1;
+    }
   }
 
   fn draw_bg(&mut self) {

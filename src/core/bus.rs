@@ -34,7 +34,6 @@ pub struct Bus {
     pub dma_transferring: bool,
     pub gamepad: Gamepad,
     pub timer: Timer,
-    #[cfg(test)]
     pub serial_output: Vec<u8>,
     cart_type: CartType,
 }
@@ -75,7 +74,6 @@ impl Bus {
             dma_transferring: false,
             gamepad: Gamepad::new(),
             timer: Timer::new(),
-            #[cfg(test)]
             serial_output: Vec::new(),
             cart_type,
         }
@@ -171,7 +169,6 @@ impl Bus {
             },
             0xFF01..=0xFF03 => {
                 self.io[idx - 0xFF00] = value;
-                #[cfg(test)]
                 if addr == 0xFF02 && value == 0x81 {
                     self.serial_output.push(self.io[0x01]);
                 }

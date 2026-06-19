@@ -788,12 +788,7 @@ fn add_u16_i8(lhs: u16, rhs: i8) -> u16 {
     (lhs as i16 + rhs as i16) as u16
 }
 
-#[cfg(not(test))]
 fn create_log() -> File {
-    File::create("log.txt").unwrap()
-}
-
-#[cfg(test)]
-fn create_log() -> File {
-    File::create(std::env::temp_dir().join("gamecrab-test-log.txt")).unwrap()
+    let path = std::env::var("GAMECRAB_LOG_PATH").unwrap_or_else(|_| "log.txt".to_string());
+    File::create(path).unwrap()
 }
