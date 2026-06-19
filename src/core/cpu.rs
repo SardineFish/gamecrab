@@ -1,10 +1,7 @@
-use std::{
-    cell::RefCell,
-    collections::{HashSet, VecDeque},
-    fs::File,
-    io::Write,
-    rc::Rc,
-};
+#[cfg(feature = "cpu-trace")]
+use alloc::collections::BTreeSet;
+use alloc::{collections::VecDeque, rc::Rc};
+use core::cell::RefCell;
 
 use super::{bus::Bus, clock::Clock, emu::RegHw};
 
@@ -102,8 +99,8 @@ pub struct Cpu {
     halting: bool,
     next_inst_t_state: u64,
     pub inst_log: VecDeque<(u16, Inst)>,
-    trace: HashSet<u32>,
-    log: File,
+    #[cfg(feature = "cpu-trace")]
+    trace: BTreeSet<u32>,
 }
 
 impl Cpu {
@@ -126,8 +123,8 @@ impl Cpu {
             halting: false,
             next_inst_t_state: 0,
             inst_log: VecDeque::with_capacity(20),
-            trace: HashSet::new(),
-            log: create_log(),
+            #[cfg(feature = "cpu-trace")]
+            trace: BTreeSet::new(),
         }
     }
 
@@ -475,15 +472,7 @@ impl Cpu {
         if self.pc == 0x5FE6 {
             self.halting = false;
         }
-        let bank_pc = if (self.pc as u32) < 0x4000 {
-            self.pc as u32
-        } else {
-            self.bus.borrow().rom_bank as u32 * 0x1000000 + (self.pc as u32)
-        };
-        if !self.trace.contains(&bank_pc) {
-            self.trace.insert(bank_pc);
-            writeln!(self.log, "{:08X}", bank_pc).unwrap();
-        }
+        self.trace_pc();
         let Inst {
             opcode,
             operand,
@@ -737,6 +726,21 @@ impl Cpu {
     }
 
     fn invalid_opcode(&self) {}
+
+    #[cfg(feature = "cpu-trace")]
+    fn trace_pc(&mut self) {
+        let bank_pc = if (self.pc as u32) < 0x4000 {
+            self.pc as u32
+        } else {
+            self.bus.borrow().rom_bank as u32 * 0x1000000 + (self.pc as u32)
+        };
+        if self.trace.insert(bank_pc) {
+            log::trace!("{:08X}", bank_pc);
+        }
+    }
+
+    #[cfg(not(feature = "cpu-trace"))]
+    fn trace_pc(&mut self) {}
 }
 
 fn get_flag_mask(flag: Flag) -> u8 {
@@ -786,9 +790,4 @@ fn id_to_alu_op(id: u8) -> fn(&mut Cpu, Reg) {
 
 fn add_u16_i8(lhs: u16, rhs: i8) -> u16 {
     (lhs as i16 + rhs as i16) as u16
-}
-
-fn create_log() -> File {
-    let path = std::env::var("GAMECRAB_LOG_PATH").unwrap_or_else(|_| "log.txt".to_string());
-    File::create(path).unwrap()
 }

@@ -2,7 +2,7 @@ mod gamepad;
 pub mod oam;
 mod timer;
 
-use memmap2::{Mmap, MmapMut};
+use alloc::vec::Vec;
 
 use self::{
     gamepad::{Gamepad, GamepadRegion},
@@ -18,9 +18,9 @@ enum CartType {
 }
 
 pub struct Bus {
-    pub rom: Mmap,
+    pub rom: Vec<u8>,
     pub vram: [u8; 0x2000],
-    pub sram: Option<MmapMut>,
+    pub sram: Option<Vec<u8>>,
     pub wram: [u8; 0x2000],
     pub oam: Oam,
     pub io: [u8; 0x80],
@@ -39,7 +39,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(rom: Mmap, sram: Option<MmapMut>) -> Self {
+    pub fn new(rom: Vec<u8>, sram: Option<Vec<u8>>) -> Self {
         let cart_type = match rom[0x147] {
             0x00 => CartType::ROM,
             0x01 => CartType::MBC1,
@@ -203,9 +203,76 @@ impl Bus {
     }
 }
 
+pub fn sram_size_from_rom(rom: &[u8]) -> usize {
+    match rom[0x149] {
+        0 => 0,
+        1 => 0,
+        2 => 0x2000,
+        3 => 0x8000,
+        4 => 0x20000,
+        5 => 0x10000,
+        _ => unimplemented!("Unsupported cartridge RAM size"),
+    }
+}
+
 fn mask(addr: u16, value: u8) -> u8 {
     match addr {
         0xFF0F | 0xFFFF => value | 0xE0,
         _ => value,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sram_size_from_rom, Bus};
+    use alloc::vec;
+
+    fn mbc1_rom() -> Vec<u8> {
+        let mut rom = vec![0; 0x4000 * 3];
+        rom[0x147] = 0x01;
+        rom[0x149] = 0x03;
+        rom[0x0150] = 0xAA;
+        rom[0x4000] = 0xBB;
+        rom[0x8000] = 0xCC;
+        rom
+    }
+
+    #[test]
+    fn reads_fixed_and_selected_rom_banks_from_vec() {
+        let mut bus = Bus::new(mbc1_rom(), None);
+
+        assert_eq!(bus.get(0x0150), 0xAA);
+        assert_eq!(bus.get(0x4000), 0xBB);
+
+        bus.set(0x2000, 0x02);
+
+        assert_eq!(bus.get(0x4000), 0xCC);
+    }
+
+    #[test]
+    fn writes_sram_into_selected_bank() {
+        let mut bus = Bus::new(mbc1_rom(), Some(vec![0; 0x8000]));
+
+        bus.set(0x4000, 0x02);
+        bus.set(0xA123, 0x5A);
+
+        assert_eq!(bus.sram.as_ref().unwrap()[0x4000 + 0x123], 0x5A);
+    }
+
+    #[test]
+    fn reports_sram_size_from_rom_header() {
+        let mut rom = vec![0; 0x150];
+
+        for (code, size) in [
+            (0, 0),
+            (1, 0),
+            (2, 0x2000),
+            (3, 0x8000),
+            (4, 0x20000),
+            (5, 0x10000),
+        ] {
+            rom[0x149] = code;
+            assert_eq!(sram_size_from_rom(&rom), size);
+        }
     }
 }

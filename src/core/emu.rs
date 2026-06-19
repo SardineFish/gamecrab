@@ -1,6 +1,5 @@
-use std::{cell::RefCell, rc::Rc};
-
-use memmap2::{Mmap, MmapMut};
+use alloc::{rc::Rc, vec::Vec};
+use core::cell::RefCell;
 
 use super::{
     bus::Bus,
@@ -31,7 +30,7 @@ pub struct Emu {
 }
 
 impl Emu {
-    pub fn new(rom: Mmap, sram: Option<MmapMut>) -> Self {
+    pub fn new(rom: Vec<u8>, sram: Option<Vec<u8>>) -> Self {
         let bus = Rc::new(RefCell::new(Bus::new(rom, sram)));
         let clock = Rc::new(RefCell::new(Clock::new()));
         Self {

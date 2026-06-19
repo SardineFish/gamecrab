@@ -6,7 +6,6 @@ use std::{
 };
 
 use gamecrab::core::emu::Emu;
-use memmap2::Mmap;
 
 const MAX_TICKS: usize = 25_000_000;
 const FRAME_TO_CAPTURE: u64 = 300;
@@ -19,12 +18,7 @@ const SCREEN_HEIGHT: usize = 144;
 const EXPECTED_GBLINEZ_FRAME_HASH: u64 = 5942243365668119245;
 const EXPECTED_GBLINEZ_GAMEPLAY_HASH: u64 = 3041149544561916889;
 const FIXTURE_DIR: &str = "tests/fixtures/blargg/cpu_instrs/individual";
-const PALETTE: &[(u8, u8, u8)] = &[
-    (255, 255, 255),
-    (170, 170, 170),
-    (85, 85, 85),
-    (0, 0, 0),
-];
+const PALETTE: &[(u8, u8, u8)] = &[(255, 255, 255), (170, 170, 170), (85, 85, 85), (0, 0, 0)];
 const BLARGG_ROMS: &[(&str, &str)] = &[
     (
         "01-special.gb",
@@ -85,8 +79,7 @@ fn gblinez_frame_300_matches_expected_output() {
     create_dir_all("target/test-output").unwrap();
     std::env::set_var("GAMECRAB_LOG_PATH", "target/test-output/gblinez-log.txt");
 
-    let file = File::open("tests/game/gblinez.gb").unwrap();
-    let rom = unsafe { Mmap::map(&file).unwrap() };
+    let rom = std::fs::read("tests/game/gblinez.gb").unwrap();
     let mut emu = Emu::new(rom, None);
 
     while emu.ppu.frame_count < FRAME_TO_CAPTURE {
@@ -114,8 +107,7 @@ fn gblinez_scripted_gameplay_matches_expected_output() {
         "target/test-output/gblinez-gameplay-log.txt",
     );
 
-    let file = File::open("tests/game/gblinez.gb").unwrap();
-    let rom = unsafe { Mmap::map(&file).unwrap() };
+    let rom = std::fs::read("tests/game/gblinez.gb").unwrap();
     let mut emu = Emu::new(rom, None);
 
     advance_frames(&mut emu, GAMEPLAY_INITIAL_WAIT_FRAMES);
@@ -174,8 +166,7 @@ fn run_blargg_rom(name: &str, expected_sha256: &str) -> (String, String) {
     let path = Path::new(FIXTURE_DIR).join(name);
     assert_fixture_hash(&path, expected_sha256);
 
-    let file = File::open(&path).unwrap();
-    let rom = unsafe { Mmap::map(&file).unwrap() };
+    let rom = std::fs::read(&path).unwrap();
     let mut emu = Emu::new(rom, None);
 
     for _ in 0..MAX_TICKS {
