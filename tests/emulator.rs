@@ -2,6 +2,7 @@ use std::{
     fs::{create_dir_all, File},
     io::{self, Write},
     path::Path,
+    thread,
 };
 
 use gamecrab::core::emu::Emu;
@@ -24,7 +25,7 @@ const PALETTE: &[(u8, u8, u8)] = &[
     (85, 85, 85),
     (0, 0, 0),
 ];
-const ROMS: &[(&str, &str)] = &[
+const BLARGG_ROMS: &[(&str, &str)] = &[
     (
         "01-special.gb",
         "fe61349cbaee10cc384b50f356e541c90d1bc380185716706b5d8c465a03cf89",
@@ -81,6 +82,7 @@ enum Button {
 
 #[test]
 fn gblinez_frame_300_matches_expected_output() {
+    create_dir_all("target/test-output").unwrap();
     std::env::set_var("GAMECRAB_LOG_PATH", "target/test-output/gblinez-log.txt");
 
     let file = File::open("tests/game/gblinez.gb").unwrap();
@@ -106,6 +108,7 @@ fn gblinez_frame_300_matches_expected_output() {
 
 #[test]
 fn gblinez_scripted_gameplay_matches_expected_output() {
+    create_dir_all("target/test-output").unwrap();
     std::env::set_var(
         "GAMECRAB_LOG_PATH",
         "target/test-output/gblinez-gameplay-log.txt",
@@ -147,11 +150,14 @@ fn gblinez_scripted_gameplay_matches_expected_output() {
 }
 
 #[test]
-fn blargg_cpu_instrs() {
-    std::env::set_var("GAMECRAB_LOG_PATH", "target/test-output/blargg-log.txt");
+fn blargg_cpu_instrs_run_in_parallel() {
+    let results = BLARGG_ROMS
+        .iter()
+        .map(|&(name, sha256)| thread::spawn(move || run_blargg_rom(name, sha256)))
+        .map(|handle| handle.join().unwrap())
+        .collect::<Vec<_>>();
 
-    for &(name, sha256) in ROMS {
-        let output = run_blargg_rom(name, sha256);
+    for (name, output) in results {
         println!("{name}: {output}");
         assert!(
             output.contains("Passed"),
@@ -164,7 +170,7 @@ fn blargg_cpu_instrs() {
     }
 }
 
-fn run_blargg_rom(name: &str, expected_sha256: &str) -> String {
+fn run_blargg_rom(name: &str, expected_sha256: &str) -> (String, String) {
     let path = Path::new(FIXTURE_DIR).join(name);
     assert_fixture_hash(&path, expected_sha256);
 
@@ -176,11 +182,11 @@ fn run_blargg_rom(name: &str, expected_sha256: &str) -> String {
         emu.tick();
         let output = serial_output(&emu);
         if output.contains("Passed") || output.contains("Failed") {
-            return output;
+            return (name.to_string(), output);
         }
     }
 
-    serial_output(&emu)
+    (name.to_string(), serial_output(&emu))
 }
 
 fn advance_frames(emu: &mut Emu, frames: u64) {
