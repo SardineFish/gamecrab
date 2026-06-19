@@ -9,9 +9,14 @@ use memmap2::Mmap;
 
 const MAX_TICKS: usize = 25_000_000;
 const FRAME_TO_CAPTURE: u64 = 300;
+const GAMEPLAY_INITIAL_WAIT_FRAMES: u64 = 60;
+const GAMEPLAY_BUTTON_HOLD_FRAMES: u64 = 10;
+const GAMEPLAY_BUTTON_GAP_FRAMES: u64 = 60;
+const GAMEPLAY_FINAL_WAIT_FRAMES: u64 = 300;
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 const EXPECTED_GBLINEZ_FRAME_HASH: u64 = 5942243365668119245;
+const EXPECTED_GBLINEZ_GAMEPLAY_HASH: u64 = 3041149544561916889;
 const FIXTURE_DIR: &str = "tests/fixtures/blargg/cpu_instrs/individual";
 const PALETTE: &[(u8, u8, u8)] = &[
     (255, 255, 255),
@@ -66,6 +71,14 @@ const ROMS: &[(&str, &str)] = &[
     ),
 ];
 
+#[derive(Clone, Copy)]
+enum Button {
+    Start,
+    A,
+    Down,
+    Right,
+}
+
 #[test]
 fn gblinez_frame_300_matches_expected_output() {
     std::env::set_var("GAMECRAB_LOG_PATH", "target/test-output/gblinez-log.txt");
@@ -87,6 +100,48 @@ fn gblinez_frame_300_matches_expected_output() {
         hash,
         EXPECTED_GBLINEZ_FRAME_HASH,
         "gblinez frame {FRAME_TO_CAPTURE} hash changed; wrote {}",
+        output_path.display(),
+    );
+}
+
+#[test]
+fn gblinez_scripted_gameplay_matches_expected_output() {
+    std::env::set_var(
+        "GAMECRAB_LOG_PATH",
+        "target/test-output/gblinez-gameplay-log.txt",
+    );
+
+    let file = File::open("tests/game/gblinez.gb").unwrap();
+    let rom = unsafe { Mmap::map(&file).unwrap() };
+    let mut emu = Emu::new(rom, None);
+
+    advance_frames(&mut emu, GAMEPLAY_INITIAL_WAIT_FRAMES);
+    for button in [
+        Button::Start,
+        Button::Start,
+        Button::Start,
+        Button::Down,
+        Button::Down,
+        Button::A,
+        Button::Right,
+        Button::A,
+    ] {
+        press_button(&mut emu, button, true);
+        advance_frames(&mut emu, GAMEPLAY_BUTTON_HOLD_FRAMES);
+        press_button(&mut emu, button, false);
+        advance_frames(&mut emu, GAMEPLAY_BUTTON_GAP_FRAMES);
+    }
+    advance_frames(&mut emu, GAMEPLAY_FINAL_WAIT_FRAMES);
+
+    let rgb = framebuffer_to_rgb(&emu.ppu.framebuffer);
+    let hash = fnv1a64(&rgb);
+    let output_path = Path::new("target/test-output/gblinez-gameplay-script.bmp");
+    write_bmp(output_path, SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &rgb).unwrap();
+
+    assert_eq!(
+        hash,
+        EXPECTED_GBLINEZ_GAMEPLAY_HASH,
+        "gblinez scripted gameplay hash changed; wrote {}",
         output_path.display(),
     );
 }
@@ -126,6 +181,23 @@ fn run_blargg_rom(name: &str, expected_sha256: &str) -> String {
     }
 
     serial_output(&emu)
+}
+
+fn advance_frames(emu: &mut Emu, frames: u64) {
+    let target_frame = emu.ppu.frame_count + frames;
+    while emu.ppu.frame_count < target_frame {
+        emu.tick();
+    }
+}
+
+fn press_button(emu: &mut Emu, button: Button, pressed: bool) {
+    let mut bus = emu.bus.borrow_mut();
+    match button {
+        Button::Start => bus.gamepad.start = pressed,
+        Button::A => bus.gamepad.a = pressed,
+        Button::Down => bus.gamepad.down = pressed,
+        Button::Right => bus.gamepad.right = pressed,
+    }
 }
 
 fn framebuffer_to_rgb(framebuffer: &[u8]) -> Vec<u8> {
