@@ -1,7 +1,7 @@
 #[cfg(feature = "cpu-trace")]
 use alloc::collections::BTreeSet;
-use alloc::{collections::VecDeque, rc::Rc};
-use core::cell::RefCell;
+use alloc::collections::VecDeque;
+use core::ptr::NonNull;
 
 use super::{bus::Bus, clock::Clock, emu::RegHw};
 
@@ -82,8 +82,8 @@ pub struct Inst {
 }
 
 pub struct Cpu {
-    bus: Rc<RefCell<Bus>>,
-    clock: Rc<RefCell<Clock>>,
+    bus: NonNull<Bus>,
+    clock: NonNull<Clock>,
     a: u8,
     b: u8,
     c: u8,
@@ -103,8 +103,13 @@ pub struct Cpu {
     trace: BTreeSet<u32>,
 }
 
+pub struct CpuStep {
+    pub t_states: u64,
+    pub executed: bool,
+}
+
 impl Cpu {
-    pub fn new(bus: Rc<RefCell<Bus>>, clock: Rc<RefCell<Clock>>) -> Self {
+    pub fn new(bus: NonNull<Bus>, clock: NonNull<Clock>) -> Self {
         Self {
             bus,
             clock,
@@ -128,6 +133,18 @@ impl Cpu {
         }
     }
 
+    fn bus(&self) -> &Bus {
+        unsafe { self.bus.as_ref() }
+    }
+
+    fn bus_mut(&mut self) -> &mut Bus {
+        unsafe { self.bus.as_mut() }
+    }
+
+    fn clock(&self) -> &Clock {
+        unsafe { self.clock.as_ref() }
+    }
+
     pub fn get_reg(&self, reg: Reg) -> u8 {
         match reg {
             A => self.a,
@@ -138,9 +155,9 @@ impl Cpu {
             H => self.h,
             L => self.l,
             F => self.f,
-            AddrBC => self.bus.borrow().get(self.get_reg_16(BC)),
-            AddrDE => self.bus.borrow().get(self.get_reg_16(DE)),
-            AddrHL => self.bus.borrow().get(self.get_reg_16(HL)),
+            AddrBC => self.bus().get(self.get_reg_16(BC)),
+            AddrDE => self.bus().get(self.get_reg_16(DE)),
+            AddrHL => self.bus().get(self.get_reg_16(HL)),
             Imm8(value) => value,
         }
     }
@@ -154,9 +171,18 @@ impl Cpu {
             H => self.h = value,
             L => self.l = value,
             F => self.f = value & 0xF0,
-            AddrBC => self.bus.borrow_mut().set(self.get_reg_16(BC), value),
-            AddrDE => self.bus.borrow_mut().set(self.get_reg_16(DE), value),
-            AddrHL => self.bus.borrow_mut().set(self.get_reg_16(HL), value),
+            AddrBC => {
+                let addr = self.get_reg_16(BC);
+                self.bus_mut().set(addr, value);
+            }
+            AddrDE => {
+                let addr = self.get_reg_16(DE);
+                self.bus_mut().set(addr, value);
+            }
+            AddrHL => {
+                let addr = self.get_reg_16(HL);
+                self.bus_mut().set(addr, value);
+            }
             Imm8(_) => panic!(),
         }
     }
@@ -201,14 +227,14 @@ impl Cpu {
 
     fn push(&mut self, value: u16) {
         let sp = self.get_reg_16(SP);
-        self.bus.borrow_mut().set(sp - 1, (value >> 8) as u8);
-        self.bus.borrow_mut().set(sp - 2, (value >> 0) as u8);
+        self.bus_mut().set(sp - 1, (value >> 8) as u8);
+        self.bus_mut().set(sp - 2, (value >> 0) as u8);
         self.set_reg_16(SP, sp - 2);
     }
     fn pop(&mut self) -> u16 {
         let sp = self.get_reg_16(SP);
         self.set_reg_16(SP, sp.wrapping_add(2));
-        self.bus.borrow().get(sp) as u16 | (self.bus.borrow().get(sp.wrapping_add(1)) as u16) << 8
+        self.bus().get(sp) as u16 | (self.bus().get(sp.wrapping_add(1)) as u16) << 8
     }
 
     fn add(&mut self, reg: Reg) {
@@ -412,7 +438,7 @@ impl Cpu {
 
     fn next_byte(&mut self) -> u8 {
         let pc = self.get_reg_16(PC);
-        let byte = self.bus.borrow().get(pc);
+        let byte = self.bus().get(pc);
         self.set_reg_16(PC, pc.wrapping_add(1));
         byte
     }
@@ -443,22 +469,41 @@ impl Cpu {
         inst
     }
 
-    pub fn tick(&mut self) {
-        if self.clock.borrow().get_t_state() < self.next_inst_t_state {
-            return;
+    pub fn tick(&mut self) -> bool {
+        let t_state = self.clock().get_t_state();
+        if t_state < self.next_inst_t_state {
+            return false;
         }
+        self.exec_due()
+    }
+
+    pub fn step(&mut self) -> CpuStep {
+        let start = self.clock().get_t_state();
+        if start < self.next_inst_t_state {
+            return CpuStep {
+                t_states: self.next_inst_t_state - start,
+                executed: false,
+            };
+        }
+
+        let executed = self.exec_due();
+        CpuStep {
+            t_states: self.next_inst_t_state - start,
+            executed,
+        }
+    }
+
+    fn exec_due(&mut self) -> bool {
         if self.halting {
             self.delay(1);
-            return;
+            return true;
         }
-        let mut ir = self.bus.borrow().get(RegHw::IF as u16);
+        let mut ir = self.bus().get(RegHw::IF as u16);
         ir &= 0x1F;
-        ir &= self.bus.borrow().get(RegHw::IE as u16);
+        ir &= self.bus().get(RegHw::IE as u16);
         if self.ime && ir > 0 {
             let int_id = 7 - ir.leading_zeros();
-            self.bus
-                .borrow_mut()
-                .set(RegHw::IF as u16, ir & !(1 << int_id));
+            self.bus_mut().set(RegHw::IF as u16, ir & !(1 << int_id));
             self.ime = false;
             self.push(self.get_reg_16(PC));
             self.jp(0x40 + int_id as u16 * 8);
@@ -519,12 +564,9 @@ impl Cpu {
                 self.set_flag(ZF, false);
             }
             0x08 => {
-                self.bus
-                    .borrow_mut()
-                    .set(operand_16 + 0, (self.get_reg_16(SP) >> 0) as u8);
-                self.bus
-                    .borrow_mut()
-                    .set(operand_16 + 1, (self.get_reg_16(SP) >> 8) as u8);
+                let sp = self.get_reg_16(SP);
+                self.bus_mut().set(operand_16 + 0, (sp >> 0) as u8);
+                self.bus_mut().set(operand_16 + 1, (sp >> 8) as u8);
             }
             0x09 | 0x19 | 0x29 | 0x39 => self.add_16(id_to_reg_16(opcode >> 4)),
             0x10 => {}
@@ -689,10 +731,11 @@ impl Cpu {
                     _ => unreachable!(),
                 };
                 if opcode & 0b_10000 > 0 {
-                    let value = self.bus.borrow().get(addr);
+                    let value = self.bus().get(addr);
                     self.set_reg(A, value);
                 } else {
-                    self.bus.borrow_mut().set(addr, self.get_reg(A));
+                    let value = self.get_reg(A);
+                    self.bus_mut().set(addr, value);
                 }
             }
             0xE8 | 0xF8 => {
@@ -710,10 +753,11 @@ impl Cpu {
             _ => self.invalid_opcode(),
         }
         self.delay(INST_BASE_CYCLES[opcode as usize]);
+        true
     }
 
     pub fn int_req(&mut self, int: Interrupt) {
-        let mut bus = self.bus.borrow_mut();
+        let bus = self.bus_mut();
         let value = bus.get(RegHw::IF as u16) | 1 << int as u8;
         bus.set(RegHw::IF as u16, value);
         if bus.get(RegHw::IE as u16) & value > 0 {
@@ -731,7 +775,7 @@ impl Cpu {
         let bank_pc = if (self.pc as u32) < 0x4000 {
             self.pc as u32
         } else {
-            self.bus.borrow().rom_bank as u32 * 0x1000000 + (self.pc as u32)
+            self.bus().rom_bank as u32 * 0x1000000 + (self.pc as u32)
         };
         if self.trace.insert(bank_pc) {
             log::trace!("{:08X}", bank_pc);
@@ -788,5 +832,5 @@ fn id_to_alu_op(id: u8) -> fn(&mut Cpu, Reg) {
 }
 
 fn add_u16_i8(lhs: u16, rhs: i8) -> u16 {
-    (lhs as i16 + rhs as i16) as u16
+    lhs.wrapping_add_signed(rhs as i16)
 }
