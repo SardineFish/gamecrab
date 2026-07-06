@@ -134,6 +134,16 @@ impl Bus {
             0xFFFF => self.ie,
         }
     }
+
+    pub fn get_rom(&self, addr: u16) -> u8 {
+        let idx = addr as usize;
+        match addr {
+            0x0000..=0x3FFF => self.rom.as_slice()[idx],
+            0x4000..=0x7FFF => self.rom.as_slice()[idx - 0x4000 + self.rom_bank as usize * 0x4000],
+            _ => self.get(addr),
+        }
+    }
+
     pub fn set(&mut self, addr: u16, mut value: u8) {
         value = mask(addr, value);
         let idx = addr as usize;

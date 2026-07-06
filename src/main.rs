@@ -15,6 +15,7 @@ use gamecrab::core::{
     bus::sram_size_from_rom,
     cpu::{Reg, Reg16},
     emu::{Emu, RegHw},
+    ppu::framebuffer_pixels,
 };
 
 const FREQ: f64 = 4194304.0 / 1.0;
@@ -166,6 +167,7 @@ fn main() {
                     //   }
                     // }
                     // println!("\nInstruction Log"); {
+                    //   // Enable with `--features inst-log`.
                     //   for &(pc, Inst { opcode, operand, operand_16 })
                     //   in emu.cpu.inst_log.iter().take(20) {
                     //     println!("{:04X} {:02X} {:02X} {:04X}",
@@ -179,8 +181,8 @@ fn main() {
         }
         texture
             .with_lock(None, |buffer, _| {
-                for i in 0..(160 * 144) {
-                    let (r, g, b) = PALETTE[emu.ppu.framebuffer[i] as usize];
+                for (i, color_id) in framebuffer_pixels(&emu.ppu.framebuffer).enumerate() {
+                    let (r, g, b) = PALETTE[color_id as usize];
                     buffer[i * 3 + 0] = r;
                     buffer[i * 3 + 1] = g;
                     buffer[i * 3 + 2] = b;

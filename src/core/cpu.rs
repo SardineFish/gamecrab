@@ -1,5 +1,6 @@
 #[cfg(feature = "cpu-trace")]
 use alloc::collections::BTreeSet;
+#[cfg(feature = "inst-log")]
 use alloc::collections::VecDeque;
 use core::ptr::NonNull;
 
@@ -98,6 +99,7 @@ pub struct Cpu {
     ei_pending: bool,
     halting: bool,
     next_inst_t_state: u64,
+    #[cfg(feature = "inst-log")]
     pub inst_log: VecDeque<(u16, Inst)>,
     #[cfg(feature = "cpu-trace")]
     trace: BTreeSet<u32>,
@@ -127,6 +129,7 @@ impl Cpu {
             ei_pending: false,
             halting: false,
             next_inst_t_state: 0,
+            #[cfg(feature = "inst-log")]
             inst_log: VecDeque::with_capacity(20),
             #[cfg(feature = "cpu-trace")]
             trace: BTreeSet::new(),
@@ -438,11 +441,12 @@ impl Cpu {
 
     fn next_byte(&mut self) -> u8 {
         let pc = self.get_reg_16(PC);
-        let byte = self.bus().get(pc);
+        let byte = self.bus().get_rom(pc);
         self.set_reg_16(PC, pc.wrapping_add(1));
         byte
     }
     fn next_inst(&mut self) -> Inst {
+        #[cfg(feature = "inst-log")]
         let pc = self.get_reg_16(PC);
         let opcode = self.next_byte();
         let inst = match INST_LENGTH[opcode as usize] {
@@ -462,9 +466,12 @@ impl Cpu {
             },
             _ => panic!("Last address: 0x{:X}\nOpcode: {:X}", self.pc, opcode),
         };
-        self.inst_log.push_back((pc, inst));
-        if self.inst_log.len() > 20 {
-            self.inst_log.pop_front();
+        #[cfg(feature = "inst-log")]
+        {
+            self.inst_log.push_back((pc, inst));
+            if self.inst_log.len() > 20 {
+                self.inst_log.pop_front();
+            }
         }
         inst
     }

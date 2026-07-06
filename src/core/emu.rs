@@ -83,8 +83,10 @@ impl Emu {
         let start = profile_now(&mut profiler);
         let t_state = self.clock_storage.get_t_state() + cpu_step.t_states;
         let mut ppu_line_advanced = false;
-        while self.ppu.tick_at(t_state) {
-            ppu_line_advanced = true;
+        if t_state >= self.ppu.next_line_t_state() {
+            while self.ppu.tick_at(t_state) {
+                ppu_line_advanced = true;
+            }
         }
         add_ppu(&mut profiler, start);
         add_ppu_tick(&mut profiler, ppu_line_advanced);

@@ -15,6 +15,8 @@ std = []
 desktop = ["std", "dep:crossterm", "dep:gl", "dep:sdl2"]
 ui = ["desktop"]
 cpu-trace = ["dep:log"]
+inst-log = []
+packed-framebuffer = []
 
 [profile.dev]
 opt-level = 0

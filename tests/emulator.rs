@@ -5,7 +5,10 @@ use std::{
     thread,
 };
 
-use gamecrab::core::emu::Emu;
+use gamecrab::core::{
+    emu::Emu,
+    ppu::{framebuffer_pixels, FrameBuffer},
+};
 
 const MAX_TICKS: usize = 25_000_000;
 const FRAME_TO_CAPTURE: u64 = 300;
@@ -197,9 +200,9 @@ fn press_button(emu: &mut Emu, button: Button, pressed: bool) {
     }
 }
 
-fn framebuffer_to_rgb(framebuffer: &[u8]) -> Vec<u8> {
+fn framebuffer_to_rgb(framebuffer: &FrameBuffer) -> Vec<u8> {
     let mut rgb = Vec::with_capacity(SCREEN_WIDTH * SCREEN_HEIGHT * 3);
-    for &color_id in framebuffer {
+    for color_id in framebuffer_pixels(framebuffer) {
         let (r, g, b) = PALETTE[color_id as usize];
         rgb.extend_from_slice(&[r, g, b]);
     }
